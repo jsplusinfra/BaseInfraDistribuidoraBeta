@@ -1,0 +1,21 @@
+# Override OPCIONAL: construye las imágenes desde los repos vecinos en vez de
+# descargarlas de ghcr.io. Sirve para probar en local, o como plan B si GitHub
+# Actions no está disponible. En producción NO se usa.
+#
+#   BACKEND_TAG=local FRONTEND_TAG=local REGISTRY=local \
+#     docker compose -f docker-compose.yml -f docker-compose.build.yml build backend frontend
+#
+# Las rutas se pueden cambiar con BACK_DIR y FRONT_DIR.
+
+services:
+  backend:
+    build:
+      context: ${BACK_DIR:-../BaseBack/distribuidora-bv}
+
+  migrate:
+    build:
+      context: ${BACK_DIR:-../BaseBack/distribuidora-bv}
+
+  frontend:
+    build:
+      context: ${FRONT_DIR:-../BaseFront}

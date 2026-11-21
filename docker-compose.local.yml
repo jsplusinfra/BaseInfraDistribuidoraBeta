@@ -1,0 +1,32 @@
+# Override OPCIONAL para correr el sistema en una PC. En producción NO se usa.
+# Agrega un nginx que hace el papel del nginx del servidor: /api -> backend, el resto -> frontend.
+# Entrar en http://localhost:8000
+#
+#   export COMPOSE_PROJECT_NAME=prueba-local        # no pisa otro stack que tengas en tu PC
+#   export REGISTRY=local BACKEND_TAG=prueba FRONTEND_TAG=prueba   # un tag distinto de "local"
+#   export COMPOSE_FILE=docker-compose.yml:docker-compose.build.yml:docker-compose.local.yml
+#   docker compose build backend frontend
+#   docker compose up -d --wait db
+#   (cargar un dump: ver docs/flujo-de-trabajo.md, sección 3.3)
+#   docker compose --profile tools run --rm migrate
+#   docker compose up -d backend frontend proxy
+#
+# Construye lo que haya en ../BaseBack y ../BaseFront (se cambian con BACK_DIR y FRONT_DIR).
+# Para apagar todo: docker compose down -v
+
+services:
+  # Backend y frontend no publican puertos acá: el proxy llega a ellos por la red interna.
+  # Así este stack no choca con otro que ya use el 3000 o el 8080 en tu PC.
+  backend:
+    ports: !reset []
+  frontend:
+    ports: !reset []
+
+  proxy:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/local.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:${LOCAL_PORT:-8000}:80"
+    depends_on: [backend, frontend]
+    networks: [interna]

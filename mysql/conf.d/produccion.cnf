@@ -1,0 +1,15 @@
+[mysqld]
+# Las vistas v_* de los tableros suponen esta collation en servidor, base y tablas.
+character-set-server    = utf8mb4
+collation-server        = utf8mb4_0900_ai_ci
+
+# Ajustado para un droplet chico (1-2 GB, con Metabase al lado). Con 4 GB o más se puede
+# subir a 512M-1G. Con 512M en 1 GB, MySQL terminaba en swap.
+innodb_buffer_pool_size = 256M
+performance_schema      = OFF
+max_connections         = 100
+max_allowed_packet      = 64M
+
+# Seguridad
+skip-name-resolve
+local_infile            = 0

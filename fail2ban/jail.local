@@ -1,0 +1,37 @@
+# Se instala en /etc/fail2ban/jail.local
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+banaction = ufw
+backend = systemd
+
+[sshd]
+enabled  = true
+maxretry = 3
+bantime  = 24h
+
+# IPs que superan el rate limit de nginx (fuerza bruta al login, scraping)
+[nginx-limit-req]
+enabled  = true
+backend  = auto
+logpath  = /var/log/nginx/sistema.error.log
+maxretry = 10
+findtime = 5m
+bantime  = 2h
+
+# Bots buscando /wp-admin, /phpmyadmin, .env, etc.
+[nginx-botsearch]
+enabled  = true
+backend  = auto
+logpath  = /var/log/nginx/sistema.access.log
+maxretry = 5
+
+# Reincidentes: ban de una semana
+[recidive]
+enabled  = true
+backend  = auto
+logpath  = /var/log/fail2ban.log
+bantime  = 1w
+findtime = 1d
+maxretry = 3

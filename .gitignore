@@ -1,0 +1,8 @@
+.env
+secrets/*
+!secrets/afip/
+secrets/afip/*
+!secrets/afip/.gitkeep
+backups/
+
+.deploy-anterior

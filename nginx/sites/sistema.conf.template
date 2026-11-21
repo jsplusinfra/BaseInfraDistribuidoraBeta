@@ -1,0 +1,118 @@
+# Sitio de producción. ${DOMAIN} se reemplaza con envsubst en scripts/03-ssl.sh.
+#   https://${DOMAIN}/        -> frontend  (127.0.0.1:8080)
+#   https://${DOMAIN}/api/... -> backend   (127.0.0.1:3000)
+
+# Cualquier request que no sea para el dominio (escaneos por IP, etc.) se corta.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 444;
+}
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
+}
+
+# HTTP -> HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    include snippets/sistema-ssl.conf;
+    include snippets/sistema-headers.conf;
+
+    access_log /var/log/nginx/sistema.access.log;
+    error_log  /var/log/nginx/sistema.error.log warn;
+
+    # El backend acepta JSON de hasta 50 MB (main.ts) y subida de imágenes (OCR)
+    client_max_body_size 50m;
+    limit_conn conn_ip 50;
+
+    # ---------- Bloqueos ----------
+    # Endpoints de seed: son GET públicos que cargan datos. Nunca expuestos.
+    location ~* ^/api/seed { return 404; }
+
+    # Swagger (/api, /api-json, /api-yaml y sus assets). Para verlo: túnel SSH a 127.0.0.1:3000/api
+    location = /api        { return 404; }
+    location = /api/       { return 404; }
+    location ~* ^/api-(json|yaml)$ { return 404; }
+    location ~* ^/api/swagger-ui { return 404; }
+
+    # Archivos ocultos (.git, .env, etc.)
+    location ~ /\.(?!well-known) { return 404; }
+
+    # ---------- Backend ----------
+    # Login, registro y recuperación de contraseña: límite estricto contra fuerza bruta
+    location ~ ^/api/auth/(login|login-con-google|registrar|recuperar|verificar-codigo) {
+        limit_req zone=api_auth burst=5 nodelay;
+        include snippets/sistema-proxy.conf;
+        include snippets/sistema-headers.conf;
+        proxy_pass http://127.0.0.1:3000;
+    }
+
+    location /api/ {
+        limit_req zone=api_general burst=60 nodelay;
+        include snippets/sistema-proxy.conf;
+        include snippets/sistema-headers.conf;
+        # PDFs, OCR e importaciones de listas de precios pueden tardar
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+        proxy_pass http://127.0.0.1:3000;
+    }
+
+    # ---------- Frontend ----------
+    # ---------- Metabase (estadísticas) ----------
+    # Solo se publica lo que necesita el tablero EMBEBIDO en el sistema: la página del
+    # tablero, sus archivos estáticos y su API. El resto de Metabase (login, administración,
+    # preguntas) responde 404: se usa por túnel SSH (http://localhost:3002), como siempre.
+    location /metabase/ { return 404; }
+    # Archivos de Metabase con un hash en el nombre (vendor.77ce06...js): no cambian nunca, así
+    # que el navegador los guarda un año. Metabase manda no-cache y, con una conexión lenta, el
+    # tablero tardaba en aparecer cada vez que se abría. Va antes que el location de abajo
+    # porque nginx usa el primer location con regex que coincide.
+    location ~ ^/metabase/app/dist/ {
+        limit_req zone=api_general burst=60 nodelay;
+        include snippets/sistema-proxy.conf;
+        include snippets/sistema-headers-embebible.conf;
+        proxy_hide_header X-Frame-Options;
+        proxy_hide_header Cache-Control;
+        proxy_hide_header Expires;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        rewrite ^/metabase/(.*)$ /$1 break;
+        proxy_pass http://127.0.0.1:3002;
+    }
+    location ~ ^/metabase/(embed/|app/|api/embed/|api/session/properties$) {
+        limit_req zone=api_general burst=60 nodelay;
+        include snippets/sistema-proxy.conf;
+        include snippets/sistema-headers-embebible.conf;
+        proxy_hide_header X-Frame-Options;
+        rewrite ^/metabase/(.*)$ /$1 break;
+        proxy_pass http://127.0.0.1:3002;
+    }
+
+    location / {
+        include snippets/sistema-proxy.conf;
+        include snippets/sistema-headers.conf;
+        proxy_pass http://127.0.0.1:8080;
+    }
+}
